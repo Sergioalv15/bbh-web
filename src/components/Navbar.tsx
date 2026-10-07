@@ -1,0 +1,177 @@
+import { BrandLogo } from "@/components/BrandLogo";
+import { Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { Menu, X, ShieldCheck, LogIn } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useIsAdmin } from "@/hooks/use-admin";
+import { useNavLinks } from "@/hooks/use-content";
+import { useHydrated } from "@/hooks/use-hydrated";
+import { NavItem } from "@/components/NavItem";
+import type { NavLink } from "@/lib/site-content.shared";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { useLocale, useT, DEFAULT_LOCALE } from "@/lib/i18n";
+import { hasBrowserSupabaseConfig } from "@/lib/local-mode";
+
+type SimpleLink = Pick<NavLink, "label" | "url" | "external" | "new_tab">;
+
+const NAV_KEYS: Record<string, string> = {
+  "/": "nav.home",
+  "/musique": "nav.music",
+  "/evenements": "nav.events",
+  "/ateliers": "nav.workshops",
+  "/artistes": "nav.artists",
+  "/journal": "nav.journal",
+  "/a-propos": "nav.about",
+  "/contact": "nav.contact",
+};
+
+const defaultLinks: SimpleLink[] = [
+  { url: "/", label: "Inicio", external: false, new_tab: false },
+  { url: "/musique", label: "Música", external: false, new_tab: false },
+  { url: "/evenements", label: "Eventos", external: false, new_tab: false },
+  { url: "/ateliers", label: "Talleres", external: false, new_tab: false },
+  { url: "/artistes", label: "Artistas", external: false, new_tab: false },
+  { url: "/journal", label: "Diario", external: false, new_tab: false },
+  { url: "/a-propos", label: "Sobre nosotros", external: false, new_tab: false },
+  { url: "/contact", label: "Contacto", external: false, new_tab: false },
+];
+
+export function Navbar() {
+  const [open, setOpen] = useState(false);
+  const [authed, setAuthed] = useState(false);
+  const { isAdmin } = useIsAdmin();
+  const hydrated = useHydrated();
+  const cmsLinks = useNavLinks("header");
+  const { locale } = useLocale();
+  const t = useT();
+  const rawLinks: SimpleLink[] = hydrated && cmsLinks.length > 0 ? cmsLinks : defaultLinks;
+  // Known site sections use the UI dictionary; custom CMS links keep their label.
+  const links: SimpleLink[] =
+    locale === DEFAULT_LOCALE
+      ? rawLinks
+      : rawLinks.map((l) => {
+          const key = NAV_KEYS[l.url];
+          return key ? { ...l, label: t(key) } : l;
+        });
+
+  useEffect(() => {
+    if (!hasBrowserSupabaseConfig()) return;
+    supabase.auth.getUser().then(({ data }) => setAuthed(!!data.user));
+
+    // Session expiry policy: force a local sign-out once the current Supabase
+    // Auth session exceeds a configurable maximum age. Supabase already expires
+    // the JWT server-side; this guard makes the client drop the stale session
+    // too, so an idle/aged token can never linger in the browser.
+    const MAX_SESSION_MS = Number(
+      import.meta.env.VITE_SESSION_MAX_AGE_MS || 7 * 24 * 60 * 60 * 1000,
+    );
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      setAuthed(!!session?.user);
+      if (session?.expires_at) {
+        const ageMs = Date.now() - session.expires_at * 1000;
+        if (ageMs < 0 && -ageMs > MAX_SESSION_MS) {
+          void supabase.auth.signOut();
+        }
+      }
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  return (
+    <header className="sticky top-0 z-50 border-b border-white/5 bg-background/70 backdrop-blur-xl">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+        <Link to="/" className="group flex items-center gap-2" onClick={() => setOpen(false)}>
+          <BrandLogo className="text-2xl" imgClassName="h-8" />
+          <span className="hidden text-[10px] font-medium uppercase tracking-[0.25em] text-muted-foreground sm:inline">
+            {t("nav.association")}
+          </span>
+        </Link>
+
+        <nav className="hidden items-center gap-1 md:flex">
+          {links.map((l) => (
+            <NavItem
+              key={`${l.url}-${l.label}`}
+              link={l}
+              activeClassName="text-foreground"
+              inactiveClassName="text-muted-foreground"
+              className="rounded-full px-3.5 py-2 text-sm font-medium transition-colors hover:text-foreground"
+            />
+          ))}
+        </nav>
+
+        <div className="hidden items-center gap-2 md:flex">
+          <LanguageSwitcher />
+          {!hasBrowserSupabaseConfig() ? null : authed && isAdmin ? (
+            <Link
+              to="/admin"
+              className="inline-flex items-center gap-1.5 rounded-full border border-electric/40 bg-electric/10 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-electric-glow transition hover:bg-electric/20"
+            >
+              <ShieldCheck className="size-3.5" /> {t("auth.admin")}
+            </Link>
+          ) : (
+            <Link
+              to="/auth"
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground transition hover:border-white/30 hover:text-foreground"
+            >
+              <LogIn className="size-3.5" /> {t("auth.login")}
+            </Link>
+          )}
+          <Link
+            to="/contact"
+            className="inline-flex items-center rounded-full bg-white px-5 py-2 text-sm font-semibold text-black transition-transform hover:scale-105"
+          >
+            {t("cta.contactUs")}
+          </Link>
+        </div>
+
+        <div className="flex items-center gap-2 md:hidden">
+          <LanguageSwitcher />
+          <button
+            className="rounded-full border border-white/10 p-2"
+            onClick={() => setOpen((o) => !o)}
+            aria-label="Menu"
+          >
+            {open ? <X className="size-5" /> : <Menu className="size-5" />}
+          </button>
+        </div>
+      </div>
+
+      {open && (
+        <div className="border-t border-white/5 bg-background/95 backdrop-blur-xl md:hidden">
+          <nav className="mx-auto flex max-w-7xl flex-col gap-1 px-6 py-4">
+            {links.map((l) => (
+              <NavItem
+                key={`${l.url}-${l.label}`}
+                link={l}
+                onClick={() => setOpen(false)}
+                activeClassName="bg-white/5 text-foreground"
+                inactiveClassName="text-muted-foreground"
+                className="rounded-lg px-4 py-3 text-base font-medium"
+              />
+            ))}
+            <div className="mt-2 border-t border-white/5 pt-3">
+              {!hasBrowserSupabaseConfig() ? null : authed && isAdmin ? (
+                <Link
+                  to="/admin"
+                  onClick={() => setOpen(false)}
+                  className="inline-flex items-center gap-2 rounded-full border border-electric/40 bg-electric/10 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-electric-glow"
+                >
+                  <ShieldCheck className="size-3.5" /> {t("auth.adminSpace")}
+                </Link>
+              ) : (
+                <Link
+                  to="/auth"
+                  onClick={() => setOpen(false)}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground"
+                >
+                  <LogIn className="size-3.5" /> {t("auth.login")}
+                </Link>
+              )}
+            </div>
+          </nav>
+        </div>
+      )}
+    </header>
+  );
+}

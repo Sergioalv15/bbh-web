@@ -1,0 +1,166 @@
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { seoQueryOptions, type SeoConfig } from "@/hooks/use-seo";
+import { pageHead, breadcrumbJsonLd } from "@/lib/seo";
+import { Instagram, Music2, Youtube, MapPin, ArrowRight } from "lucide-react";
+import { SiteShell } from "@/components/SiteShell";
+import { HeroBackdrop } from "@/components/HeroBackdrop";
+import { SectionHeading } from "@/components/SectionHeading";
+import { CtaButton } from "@/components/CtaButton";
+import { ImageCard } from "@/components/ImageCard";
+import { listPublicArtists } from "@/lib/artists.functions";
+import { localizeArtist, type ArtistRecord } from "@/lib/artists.shared";
+import { useLocale, useT } from "@/lib/i18n";
+
+export const Route = createFileRoute("/artistes")({
+  loader: async ({ context }) => {
+    const [seo, artists] = await Promise.all([
+      context.queryClient.ensureQueryData(seoQueryOptions),
+      listPublicArtists(),
+    ]);
+    return { seo: seo as SeoConfig, artists };
+  },
+  head: ({ loaderData }) => {
+    const cfg = loaderData?.seo;
+    const base = cfg?.settings.baseUrl ?? "";
+    return pageHead(cfg, "artists", {
+      path: "/artistes",
+      jsonLd: [
+        breadcrumbJsonLd(base, [
+          { name: "Inicio", path: "/" },
+          { name: "Artistas", path: "/artistes" },
+        ]),
+      ],
+    });
+  },
+  component: ArtistsPage,
+});
+
+function ArtistsPage() {
+  const { artists: rawArtists } = Route.useLoaderData() as { artists: ArtistRecord[] };
+  const { locale } = useLocale();
+  const t = useT();
+  const artists = rawArtists.map((a) => localizeArtist(a, locale));
+  return (
+    <SiteShell>
+      {/* Header */}
+      <section className="relative overflow-hidden border-b border-white/5">
+        <div className="absolute inset-0 -z-10" style={{ background: "var(--gradient-hero)" }} />
+        <HeroBackdrop slot="artists_hero" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 select-none overflow-hidden">
+          <div className="whitespace-nowrap text-center font-display text-[16vw] font-black leading-[0.8] tracking-tighter text-white/[0.04]">
+            ROSTER
+          </div>
+        </div>
+        <div className="mx-auto max-w-7xl px-6 pt-24 pb-16 md:pt-32">
+          <div className="text-xs font-semibold uppercase tracking-[0.25em] text-electric-glow">
+            El roster
+          </div>
+          <h1 className="mt-4 font-display text-5xl font-black leading-[0.95] tracking-tighter sm:text-7xl">
+            Artistas BBH
+          </h1>
+          <p className="mt-6 max-w-2xl text-lg text-muted-foreground sm:text-xl">
+            El roster empieza con un solo nombre. Se construye despacio, a mano, en torno a un
+            fundador y a una identidad clara.
+          </p>
+        </div>
+      </section>
+
+      {/* Grid */}
+      <section className="mx-auto max-w-7xl px-6 py-12">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2">
+          {artists.map((a) => (
+            <article
+              key={a.slug}
+              className="group grid gap-0 overflow-hidden rounded-3xl border border-white/10 bg-surface transition hover:border-electric/30 card-hover sm:grid-cols-[1fr_1.2fr]"
+            >
+              <ImageCard
+                tone="mixed"
+                aspect="aspect-square sm:aspect-auto sm:h-full"
+                title=""
+                overlay={false}
+                className="rounded-none border-none"
+                slot={a.isFounder ? "artist_reverseflow" : undefined}
+                alt={`Retrato de ${a.name}`}
+              />
+
+              <div className="flex flex-col justify-between p-6">
+                <div>
+                  {a.badge && (
+                    <span className="inline-flex items-center rounded-full border border-electric/30 bg-electric/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-electric-glow">
+                      {a.badge}
+                    </span>
+                  )}
+                  <h3 className="mt-4 font-display text-2xl font-black tracking-tight">
+                    <Link
+                      to="/artistes/$slug"
+                      params={{ slug: a.slug }}
+                      className="transition hover:text-electric-glow"
+                    >
+                      {a.name}
+                    </Link>
+                  </h3>
+                  <div className="mt-1.5 flex items-center gap-1.5 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    <MapPin className="size-3" /> {a.origin}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {a.genres.map((g) => (
+                      <span
+                        key={g}
+                        className="rounded-full border border-white/10 px-2.5 py-0.5 text-[11px] text-muted-foreground"
+                      >
+                        {g}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="mt-4 text-sm text-muted-foreground">
+                    {a.shortDescription || a.bio}
+                  </p>
+                </div>
+                <div className="mt-6 flex items-center gap-2">
+                  <Link to="/artistes/$slug" params={{ slug: a.slug }} className="mr-2 inline-flex items-center gap-1.5 rounded-full border border-electric/40 bg-electric/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-electric transition group-hover:bg-electric/20 group-hover:text-electric-glow">
+                    {t("cta.profile")} <ArrowRight className="size-3.5" />
+                  </Link>
+                  {[
+                    { href: a.instagram, label: "Instagram", Icon: Instagram },
+                    { href: a.spotify, label: "Spotify", Icon: Music2 },
+                    { href: a.youtube, label: "YouTube", Icon: Youtube },
+                  ]
+                    .filter((s) => !!s.href)
+                    .map(({ href, label, Icon }) => (
+                      <a
+                        key={label}
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`${label} — ${a.name}`}
+                        className="grid size-9 place-items-center rounded-full border border-white/10 text-muted-foreground transition hover:border-electric/40 hover:text-foreground"
+                      >
+                        <Icon className="size-4" />
+                      </a>
+                    ))}
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="mx-auto max-w-7xl px-6 pb-32">
+        <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-surface p-10 md:p-16">
+          <div className="absolute inset-0 -z-10" style={{ background: "var(--gradient-hero)" }} />
+          <SectionHeading
+            eyebrow="Únete al catálogo"
+            title="¿Quieres unirte al catálogo BBH&nbsp;?"
+            description="Envía tu perfil, tus enlaces y tu universo. Miramos todo lo que llega."
+          />
+          <div className="mt-8">
+            <CtaButton to="/contact" variant="primary">
+              {t("artist.sendProfile")} <ArrowRight className="size-4" />
+            </CtaButton>
+          </div>
+        </div>
+      </section>
+    </SiteShell>
+  );
+}
